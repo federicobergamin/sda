@@ -14,6 +14,14 @@ Importantly, we decouple the observation model from the training procedure and u
 
 The majority of the code is written in [Python](https://www.python.org). Neural networks are built and trained using the [PyTorch](https://pytorch.org/) automatic differentiation framework. We also rely on [JAX](https://github.com/google/jax) and [jax-cfd](https://github.com/google/jax-cfd) to simulate fluid dynamics and on [POT](https://github.com/PythonOT/POT) to compute Wasserstein distances. All dependencies are provided as a [conda](https://conda.io) environment file.
 
+> **NOTE** In order to generate the Kolmogorov experiment dataset you need to install [jax-cfd](https://github.com/google/jax-cfd). If you install directly using ``pip`` you will get a ``jax.linalg.norm`` error. To avoid that, just install it by cloning the repository. 
+```
+git clone https://github.com/google/jax-cfd.git
+cd jax-cfd
+pip install jaxlib
+pip install -e ".[complete]"
+```
+
 ```
 conda env create -f environment.yml
 conda activate sda

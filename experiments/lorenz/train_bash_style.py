@@ -19,7 +19,7 @@ import argparse
 from pathlib import Path
 
 def main(args):
-    DATA_PATH = 'data/'
+    DATA_PATH = '../experiments/lorenz/data/'
     SCRATCH_PATH = Path('/scratch/fedbe/sda/experiments/lorenz')
     # os.makedirs(SCRATCH_PATH / 'runs/', exist_ok=True)
 
@@ -59,7 +59,7 @@ def main(args):
     elif args.experiment == 'local':
         CONFIG = {
             # Architecture
-            'window': 5,
+            'window': args.window,
             'embedding': 32,
             'width': 256,
             'depth': 5,
@@ -83,6 +83,7 @@ def main(args):
 
         # Network
         window = CONFIG['window']
+        # window = args.window
         score = make_local_score(**CONFIG)
         sde = VPSDE(score.kernel, shape=(window * 3,)).cuda()
 
@@ -140,6 +141,6 @@ if __name__ == "__main__":
     # parser.add_argument('--seed', '-seed', type=int, default=0, help='seed for randomness generator')
     parser.add_argument('--seed', '-s', type=int, default=77, help='seed')
     parser.add_argument('--experiment', '-exp', type=str, default='local', help='local: k <= 4, global: k>4')
-
+    parser.add_argument('--window', '-w', type=int, default=5, help='seed')
     args = parser.parse_args()
     main(args)
