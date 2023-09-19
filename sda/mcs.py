@@ -323,8 +323,9 @@ class KolmogorovFlow(MarkovChain):
 
         key = rng.PRNGKey(seed)
         keys = rng.split(key, Size(shape).numel())
-        keys = keys.reshape(*shape, -1)
-
+        keys = keys.reshape(*shape, -1)  
+        # NOTE: there is an error when calling this function: TypeError: jnp.linalg.norm requires ndarray or scalar 
+        # arguments, got <class 'list'> at position 0.
         x = self._prior(keys)
         x = torch.tensor(np.asarray(x))
 

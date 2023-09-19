@@ -48,6 +48,10 @@ def save_data(x: Tensor, file: Path) -> None:
 
 
 def load_data(file: Path, window: int = None) -> Tensor:
+    '''
+    The window argument prepared the pseudo markov blanket
+    used for approxiamting the score
+    '''
     with h5py.File(file, mode='r') as f:
         data = f['x'][:]
 
