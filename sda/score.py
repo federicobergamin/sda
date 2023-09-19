@@ -36,7 +36,7 @@ class TimeEmbedding(nn.Sequential):
 
 
 class ScoreNet(nn.Module):
-    r"""Creates a score network.
+    r"""Creates a simple score network made of residual blocks.
 
     Arguments:
         features: The number of features.
@@ -82,7 +82,11 @@ class ScoreUNet(nn.Module):
 
 
 class MCScoreWrapper(nn.Module):
-    r"""Disguises a `ScoreUNet` as a score network for a Markov chain."""
+    r"""Disguises a `ScoreUNet` as a score network for a Markov chain.
+    
+        Just a wrapper for our score network that is passed in the constructor.
+        The forward just call the forward of the score network
+    """
 
     def __init__(self, score: nn.Module):
         super().__init__()
@@ -115,22 +119,46 @@ class MCScoreNet(nn.Module):
         else:
             build = ScoreNet
 
+        # kernel is just the scoreNet we decide to use
+        # order is just the K variable they decide to use in each experiments.
+        # So if we have k=2, then for each x_i we consider x_{i-2},x_{i-1}, x_{i}, x_{i+1}, x_{i+2}
+        # so we are processing 2*order + 1 frames of _features_ number of features
+
         self.kernel = build(features * (2 * order + 1), **kwargs)
 
     def forward(
         self,
-        x: Tensor,  # (B, L, C, H, W)
+        x: Tensor,  # (B, L, C, H, W) --> (batch, length_trajectory, channel, height, width) --> what is a batch in this setting???
         t: Tensor,  # ()
     ) -> Tensor:
+        '''
+        This forward is a smart implementation of Algorithm 2 in the paper
+        '''
+        # create all the pseudo markov blanket of order k, given the batch of trajectories
         x = self.unfold(x, self.order)
+        # compute all the different scores. Size should be (B, number_of_blankets, number_frame_in_blankets)
+        # or it should be the same as x shape, which I found it strange
+        # TODO: check shape of s
         s = self.kernel(x, t)
+        # compute the approximated scores
         s = self.fold(s, self.order)
 
         return s
 
+    # the tag is just compiling the function when it is first called during tracing
     @staticmethod
     @torch.jit.script_if_tracing
     def unfold(x: Tensor, order: int) -> Tensor:
+        '''
+        This method take the batch of trajectories, and return all the psudo markov
+        blanket described by Algorithm 2 in the paper.
+        So it just create the following:
+        - x_{1:2k+1}(t)
+        - x_{i−k:i+k}(t) for i = k + 2 to L − k − 1
+        - x_{L−2k:L}(t)
+
+        These are all the input to our score network that are used to compute the approximate score.
+        '''
         x = x.unfold(1, 2 * order + 1, 1)
         x = x.movedim(-1, 2)
         x = x.flatten(2, 3)
@@ -140,6 +168,10 @@ class MCScoreNet(nn.Module):
     @staticmethod
     @torch.jit.script_if_tracing
     def fold(x: Tensor, order: int) -> Tensor:
+        '''
+        Function that given all the scores computed in each markov blanket and
+        compose the approximated score as described in Algorithm 2
+        '''
         x = x.unflatten(2, (2 * order  + 1, -1))
 
         return torch.cat((
