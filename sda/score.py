@@ -361,6 +361,15 @@ class GaussianScore(nn.Module):
 
     Note:
         This module returns :math:`-\sigma(t) s(x(t), t | y)`.
+
+    Comments: this is the class implementing the likelihood score 
+                \nabla_{x(t)} log N (y | A(\hat{x}), \Sigma_{y} + (\sigma(t)^2 / mu(t)^2) \Gamma)
+            
+            where \hat{x} is computed using Tweedie's Formula given by:
+
+            \hat{x} = \frac{x(t) + \sigma(t)^2 s_x}{\mu(t)}
+
+            and s_x is the prior score given by the score newtork.
     """
 
     def __init__(
@@ -378,7 +387,9 @@ class GaussianScore(nn.Module):
         self.register_buffer('std', torch.as_tensor(std))
         self.register_buffer('gamma', torch.as_tensor(gamma))
 
+        # observation process A
         self.A = A
+        # score netwerk
         self.sde = sde
         self.detach = detach
 

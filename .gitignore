@@ -15,6 +15,9 @@ wandb/
 # macOS
 .DS_Store
 
+# my bash scripts
+bash_scripts/
+
 
 ##########
 # Python #
