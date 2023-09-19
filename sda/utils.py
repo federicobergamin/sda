@@ -50,7 +50,12 @@ def save_data(x: Tensor, file: Path) -> None:
 def load_data(file: Path, window: int = None) -> Tensor:
     '''
     The window argument prepared the pseudo markov blanket
-    used for approxiamting the score
+    used for approxiamting the score. However I think there is something
+    strange going on here. Or I am just confused.
+
+    NOTE: If we condier a specific window size, shouldn't we be 
+    symmetric. So I have the feeling that data = data.unfold(1, window, 1)
+    should be data = data.unfold(1, 2*window+1, 1). But in this case it's not the case.
     '''
     with h5py.File(file, mode='r') as f:
         data = f['x'][:]

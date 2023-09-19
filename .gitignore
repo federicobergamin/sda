@@ -18,6 +18,8 @@ wandb/
 # my bash scripts
 bash_scripts/
 
+# my temp file to understand stuff
+experiments/lorenz/temp.py
 
 ##########
 # Python #
