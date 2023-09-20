@@ -18,7 +18,7 @@ from utils import *
 import argparse
 
 def main(args):
-    DATA_PATH = PATH('/scratch/fedbe/sda/kolmogorov')
+    DATA_PATH = Path('/scratch/fedbe/sda/kolmogorov')
     SCRATCH_PATH = Path('/scratch/fedbe/sda/experiments/kolmogorov')
 
     torch.manual_seed(args.seed)
