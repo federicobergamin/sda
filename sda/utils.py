@@ -56,6 +56,10 @@ def load_data(file: Path, window: int = None) -> Tensor:
     NOTE: If we condier a specific window size, shouldn't we be 
     symmetric. So I have the feeling that data = data.unfold(1, window, 1)
     should be data = data.unfold(1, 2*window+1, 1). But in this case it's not the case.
+
+    NOTE (2): windows should be an odd number only, otherwise it is not running. Or at least 
+                this is what is happening in the lorenz experiment. So k = window // 2
+                
     '''
     with h5py.File(file, mode='r') as f:
         data = f['x'][:]

@@ -270,6 +270,9 @@ class VPSDE(nn.Module):
                 # Corrector
                 for _ in range(corrections):
                     eps = torch.randn_like(x)
+                    # NOTE: since we are parametrizing eps(x(t),t) = - sigma(t) * score(x(t),t)
+                    # if we need to use score(x(t),t) we have to always compute
+                    # score(x(t),t) = - eps(x(t),t) / sigma(t)
                     s = -self.eps(x, t - dt) / self.sigma(t - dt)
                     delta = tau / s.square().mean(dim=self.dims, keepdim=True)
 
@@ -370,6 +373,15 @@ class GaussianScore(nn.Module):
             \hat{x} = \frac{x(t) + \sigma(t)^2 s_x}{\mu(t)}
 
             and s_x is the prior score given by the score newtork.
+
+            Since we are using the following parametrization of the score
+            function:
+                    s_x = - \eps_x / \sigma(t)
+
+            then Tweedie's formula becomes:
+                 \hat{x} = \frac{x(t) - \sigma(t) \eps_x}{\mu(t)}
+
+            which is exactly shown on line 421.
     """
 
     def __init__(
@@ -404,7 +416,9 @@ class GaussianScore(nn.Module):
 
             if not self.detach:
                 eps = self.sde.eps(x, t)
-
+            
+            # this is Tweedie's formula under the chosen parametrization
+            # of epsilon
             x_ = (x - sigma * eps) / mu
 
             err = self.y - self.A(x_)

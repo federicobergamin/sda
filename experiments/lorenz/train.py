@@ -137,6 +137,8 @@ def train_local(i: int):
     )
 
     # Evaluation
+    # NOTE [Understand if it's correct or not]: here at evaluation time the score of our SDE is just the score.kernel
+    # so we are not using the Algorithm 2 here to constuct the score neither.
     chain = make_chain()
 
     x = sde.sample((4096,), steps=64).cpu()

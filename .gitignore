@@ -20,6 +20,7 @@ bash_scripts/
 
 # my temp file to understand stuff
 experiments/lorenz/temp.py
+experiments/lorenz/understand_training_process.py
 
 ##########
 # Python #
