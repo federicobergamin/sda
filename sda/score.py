@@ -421,6 +421,8 @@ class GaussianScore(nn.Module):
             # of epsilon
             x_ = (x - sigma * eps) / mu
 
+            # here we apply the observation process to x_ so we can compare with the 
+            # observation y we are given
             err = self.y - self.A(x_)
             var = self.std ** 2 + self.gamma * (sigma / mu) ** 2
 

@@ -44,6 +44,10 @@ for name, local in [
 
             # Observation
             with h5py.File(PATH / 'results/obs.h5', mode='r') as f:
+                # so here we take some observations we get from
+                # the observation models of the evaluation trajectories
+                # so in case of low freq we get 9 observations while for high 
+                # freq we get 65 obs.
                 y = torch.from_numpy(f[freq][i])
 
             A = lambda x: chain.preprocess(x)[..., :1]

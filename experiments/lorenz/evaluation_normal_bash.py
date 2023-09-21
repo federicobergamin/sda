@@ -37,66 +37,67 @@ def main(args):
         run_name = 'generous-lake-11_g7bebatj'
 
     
-    for freq in ['lo', 'hi']:
+    # for freq in ['lo', 'hi']:
+    freq = args.freq
+    
+    for i in range(64):
+        # I have to make a chain
+        chain = make_chain() 
 
-        for i in range(64):
-            # I have to make a chain
-            chain = make_chain() 
+        # load the observation 
+        with h5py.File(RESULTS_PATH / 'obs.h5', mode='r') as f:
+            y = torch.from_numpy(f[freq][i])
 
-            # load the observation 
-            with h5py.File(RESULTS_PATH / 'obs.h5', mode='r') as f:
-                y = torch.from_numpy(f[freq][i])
+        A = lambda x: chain.preprocess(x)[..., :1]
 
-            A = lambda x: chain.preprocess(x)[..., :1]
+        if freq == 'lo':  # low frequency & low noise
+            sigma, step = 0.05, 8
+        else:             # high frequency & high noise
+            sigma, step = 0.25, 1
 
-            if freq == 'lo':  # low frequency & low noise
-                sigma, step = 0.05, 8
-            else:             # high frequency & high noise
-                sigma, step = 0.25, 1
+        x = posterior(y, A=A, sigma=sigma, step=step)[:1024]
+        x_ = posterior(y, A=A, sigma=sigma, step=step)[:1024]
 
-            x = posterior(y, A=A, sigma=sigma, step=step)[:1024]
-            x_ = posterior(y, A=A, sigma=sigma, step=step)[:1024]
+        log_px = log_prior(x).mean().item()
+        log_py = log_likelihood(y, x, A=A, sigma=sigma, step=step).mean().item()
+        w1 = emd(x, x_).item()
+
+        with open(RESULTS_PATH / f'stats_{freq}.csv', mode='a') as f:
+            f.write(f'{i},ground-truth,,{log_px},{log_py},{w1}\n')
+
+        print('GT:', log_px, log_py, w1, flush=True)
+
+        # Score
+        if args.experiment == 'local':
+            score = load_score(TRAINED_MODEL_PATH / f'runs/{run_name}/state.pth', local=True)
+        else:
+            score = load_score(TRAINED_MODEL_PATH / f'runs/{run_name}/state.pth', local=False)
+
+        if not args.experiment == 'local':
+            score = MCScoreWrapper(score)
+
+        sde = VPSDE(
+            GaussianScore(
+                y=y,
+                A=lambda x: x[..., ::step, :1],
+                std=sigma,
+                sde=VPSDE(score, shape=()),
+            ),
+            shape=(65, 3),
+        ).cuda()
+
+        for C in (0, 1, 2, 4, 8, 16):
+            x = sde.sample((1024,), steps=256, corrections=C, tau=0.25).cpu()
+            x = chain.postprocess(x)
 
             log_px = log_prior(x).mean().item()
             log_py = log_likelihood(y, x, A=A, sigma=sigma, step=step).mean().item()
             w1 = emd(x, x_).item()
 
             with open(RESULTS_PATH / f'stats_{freq}.csv', mode='a') as f:
-                f.write(f'{i},ground-truth,,{log_px},{log_py},{w1}\n')
+                f.write(f'{i},{run_name},{C},{log_px},{log_py},{w1}\n')
 
-            print('GT:', log_px, log_py, w1, flush=True)
-
-            # Score
-            if args.experiment == 'local':
-                score = load_score(TRAINED_MODEL_PATH / f'runs/{run_name}/state.pth', local=True)
-            else:
-                score = load_score(TRAINED_MODEL_PATH / f'runs/{run_name}/state.pth', local=False)
-
-            if not args.experiment == 'local':
-                score = MCScoreWrapper(score)
-
-            sde = VPSDE(
-                GaussianScore(
-                    y=y,
-                    A=lambda x: x[..., ::step, :1],
-                    std=sigma,
-                    sde=VPSDE(score, shape=()),
-                ),
-                shape=(65, 3),
-            ).cuda()
-
-            for C in (0, 1, 2, 4, 8, 16):
-                x = sde.sample((1024,), steps=256, corrections=C, tau=0.25).cpu()
-                x = chain.postprocess(x)
-
-                log_px = log_prior(x).mean().item()
-                log_py = log_likelihood(y, x, A=A, sigma=sigma, step=step).mean().item()
-                w1 = emd(x, x_).item()
-
-                with open(RESULTS_PATH / f'stats_{freq}.csv', mode='a') as f:
-                    f.write(f'{i},{run_name},{C},{log_px},{log_py},{w1}\n')
-
-                print(f'{C:02d}:', log_px, log_py, w1, flush=True)
+            print(f'{C:02d}:', log_px, log_py, w1, flush=True)
 
 
 if __name__ == "__main__":  
@@ -105,5 +106,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', '-s', type=int, default=77, help='seed')
     parser.add_argument('--experiment', '-exp', type=str, default='local', help='local: k <= 4, global: k>4')
     parser.add_argument('--window', '-w', type=int, default=5, help='seed')
+    parser.add_argument('--freq', '-freq', type=str, default='lo', help='frequency, either lo or hi')
+
     args = parser.parse_args()
     main(args)
