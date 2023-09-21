@@ -214,9 +214,12 @@ def main(args):
             # here we are taking the first eight states of the second trajectory
             x_star = torch.from_numpy(f['x'][2, :8])
 
+        print('x_star shape')
+        print(x_star.shape)
         # compute the vorticity
         w = chain.vorticity(x_star)
-
+        print('w shape')
+        print(w.shape)
 
         draw(w.reshape(1, 8, 64, 64)).save('plots/x_star_non_lin_saturation.png')
         draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_star_non_lin_saturation_zoom2.png')
@@ -232,6 +235,8 @@ def main(args):
             return w[..., 2:14, 2:14]
         
         y_star = torch.normal(A(x_star), 0.05)
+        print('y_star shape')
+        print(y_star.shape)
 
         w = chain.vorticity(chain.coarsen(x_star, 4))
         w = w / (1 + abs(w))
@@ -343,6 +348,7 @@ def main(args):
 
     elif args.experiment == 'loop':
         # I have to understand what is going on here
+        # NOTE: I an not able to run this one
         sde = VPSDE(
             GaussianScore(
                 torch.zeros(2, 64, 64),
@@ -360,12 +366,102 @@ def main(args):
         draw(w.reshape(8, 8, 64, 64)).save('plots/x_loop.png')
         draw(w.reshape(8, 8, 64, 64), zoom=2).save('plots/x_loop_zoom2.png')
 
+    elif args.experiment == 'forecast':
+        trajectory_length = args.trajectory_length
+        conditioned_frame = args.conditioned_frame
+        # trying to implement a naive way of forecasting, can be completely wrong to be honest, but let'see
+        # also at the moment it's not autoregressive, so we are not using the space in a very smart way.
+        # See this as version 0.0.1
+        with h5py.File(PATH_DATA / 'data/test.h5') as f:
+            # consider the first 15 states of the tenth trajectory
+            x_star = torch.from_numpy(f['x'][10, :trajectory_length]) # this should be something like  (15, 2, 64,64)
+        
+        print(x_star.shape) #(15, 2, 64, 64)
+
+        if trajectory_length > 10:
+            vorticity_true_trajectory = chain.vorticity(x_star[::(trajectory_length//10)])
+            draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(f'plots/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+            draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(f'plots/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+        else:
+            vorticity_true_trajectory = chain.vorticity(x_star)
+            draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plots/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+            draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plots/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+
+        # now I have to define my A(x) and mask I guess
+        # mask = np.ones((conditioned_frame, 64, 64), dtype=bool)
+        # mask[:, :conditioned_frame, :, :] = True
+        # print(mask[1,0:5,0:5])
+
+        def A(x):
+            # let's say that as initial example I am conditioning on 
+            # the vorticity of the first two states
+            # TODO: Conditioning on different stuff
+            return chain.vorticity(x[..., :conditioned_frame, :, :, :]) #* mask
+        
+        y_star = torch.normal(A(x_star), 0.05)
+        
+        print('y_star shape')
+        print(y_star.shape)
+        draw(y_star.reshape(1,  conditioned_frame, 64, 64)).save(f'plots/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+        draw(y_star.reshape(1, conditioned_frame, 64, 64), zoom=2).save(f'plots/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+
+
+        # now I can try both SDA and DSP and check if I can get something interesting out
+        sde = VPSDE(
+            GaussianScore(
+                y_star,
+                A=A,
+                std=0.1,
+                sde=VPSDE(score, shape=()),
+            ),
+            shape=x_star.shape,
+        ).cuda()
+
+        x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
+
+        if trajectory_length > 10:
+            vorticity_sda = chain.vorticity(x[::(trajectory_length//10)])
+            draw(vorticity_sda.reshape(1, 10, 64, 64)).save(f'plots/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+            draw(vorticity_sda.reshape(1, 10, 64, 64), zoom=2).save(f'plots/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+        else:
+            vorticity_sda = chain.vorticity(x)
+            draw(vorticity_sda.reshape(1, trajectory_length, 64, 64)).save(f'plots/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+            draw(vorticity_sda.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plots/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+       
+
+        # now I can train DSP
+        sde = VPSDE(
+            DPSGaussianScore(
+                y_star,
+                A=A,
+                zeta=1.0,
+                sde=VPSDE(score, shape=()),
+            ),
+            shape=x_star.shape,
+        ).cuda()
+
+        x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
+
+        if trajectory_length > 10:
+            vorticity_dsp = chain.vorticity(x[::(trajectory_length//10)])
+        else:
+            vorticity_dsp = chain.vorticity(x)
+
+        draw(vorticity_dsp.reshape(1, 10, 64, 64)).save(f'plots/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+        draw(vorticity_dsp.reshape(1, 10, 64, 64), zoom=2).save(f'plots/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+
+    else:
+        raise NotImplementedError(f'We do not have an implementation for {args.experiment} experiment')
+    
+
 if __name__ == "__main__":  
     parser = argparse.ArgumentParser(description='Evaluate Kolmogorov Experiments')
     # parser.add_argument('--seed', '-seed', type=int, default=0, help='seed for randomness generator')
     parser.add_argument('--seed', '-s', type=int, default=77, help='seed')
     parser.add_argument('--experiment', '-exp', type=str, default='circle', help='Possibilities: circle, assimilation, extrapolation, non-lin, subsampling, loop')
     parser.add_argument('--subsampling_val', '-sub_val', type=int, default=2, help='Value for subsampling in the subsampling exp')
+    parser.add_argument('--conditioned_frame', '-cond_frame', type=int, default=2, help='Number of frames we conditioned on for forecasting')
+    parser.add_argument('--trajectory_length', '-traj_len', type=int, default=10, help='Trajectory length')
     args = parser.parse_args()
     main(args)
 
