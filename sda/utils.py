@@ -83,26 +83,31 @@ def loop(
     sde: VPSDE,
     trainset: Tensor,
     validset: Tensor,
+    optimizer: torch.optim.Optimizer,
     epochs: int = 256,
     epoch_size: int = 4096,
     batch_size: int = 64,
-    optimizer: str = 'AdamW',
+    # optimizer: str = 'AdamW',
     learning_rate: float = 1e-3,
     weight_decay: float = 1e-3,
     scheduler: float = 'linear',
     device: str = 'cpu',
     **absorb,
 ) -> Iterator:
+    
+    #TODO: to remove once fully migrated to hydra config
     # Optimizer
-    if optimizer == 'AdamW':
-        optimizer = torch.optim.AdamW(
-            sde.parameters(),
-            lr=learning_rate,
-            weight_decay=weight_decay,
-        )
-    else:
-        raise ValueError()
+    if isinstance(optimizer, str):
+        if optimizer == 'AdamW':
+            optimizer = torch.optim.AdamW(
+                sde.parameters(),
+                lr=learning_rate,
+                weight_decay=weight_decay,
+            )
+        # else:
+        #     raise ValueError()
 
+    # TODO: refactor with hydra config
     # Scheduler
     if scheduler == 'linear':
         lr = lambda t: 1 - (t / epochs)
@@ -113,6 +118,7 @@ def loop(
     else:
         raise ValueError()
 
+    # TODO: refactor with hydra config
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr)
 
     # Loop

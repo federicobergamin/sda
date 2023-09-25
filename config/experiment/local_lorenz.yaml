@@ -1,0 +1,29 @@
+# @package _global_
+
+name: lorenz
+
+# defaults:
+#   - /data: cyclic
+#   - /net: e3nn
+#   - override /lr_schedule: constant
+
+run_file: experiments/lorenz.py
+
+net:
+  window: 5
+  embedding: 32
+  width: 256
+  depth: 5
+  hidden_channels: (64,)
+  hidden_blocks: (3,)
+  activation: 'SiLU'
+
+optim:
+  lr: 1e-4
+  weight_decay: 1e-3
+
+# training:
+epochs: 1024
+epoch_size: 16384
+batch_size: 64
+scheduler: 'linear'
