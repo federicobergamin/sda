@@ -27,6 +27,15 @@ bash_scripts/
 experiments/lorenz/temp.py
 experiments/lorenz/understand_training_process.py
 experiments/kolmogorov/plots/
+experiments/kolmogorov/temp.py
+experiments/kolmogorov/plot_trying_stuff/
+experiments/lorenz/results/
+experiments/lorenz/compute_figures.py
+experiments/lorenz/eval_forecast.py
+experiments/lorenz/statistics.pdf
+experiments/lorenz/statistics.png
+experiments/kuramoto
+sda/eval_metrics.py
 
 ##########
 # Python #
