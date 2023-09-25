@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 
 from sda.mcs import *
 from sda.score import *
+from sda.loop import loop
 from sda.utils import *
 from sda.utils.loggers import LoggerCollection
 from experiments.lorenz.utils import *

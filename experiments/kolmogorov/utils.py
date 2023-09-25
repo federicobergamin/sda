@@ -11,6 +11,7 @@ from typing import *
 from sda.mcs import *
 from sda.score import *
 from sda.utils import *
+from sda.nn import ACTIVATIONS
 
 
 if 'SCRATCH' in os.environ:
