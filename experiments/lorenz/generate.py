@@ -39,10 +39,11 @@ def simulate():
 
 
 if __name__ == '__main__':
-    schedule(
-        simulate,
-        name='Data generation',
-        backend='slurm',
-        settings={'export': 'ALL'},
-        env=['conda activate sda'],
-    )
+    simulate()
+    # schedule(
+    #     simulate,
+    #     name='Data generation',
+    #     backend='slurm',
+    #     settings={'export': 'ALL'},
+    #     env=['conda activate sda'],
+    # )

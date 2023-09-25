@@ -1,0 +1,6 @@
+csv:
+  _target_: sda.utils.loggers.CSVLogger
+  save_dir: ${paths.logs_dir}
+  name: ""
+  # version: ""
+  flush_logs_every_n_steps: 1000

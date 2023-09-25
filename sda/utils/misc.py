@@ -13,7 +13,7 @@ from torch import Tensor
 from tqdm import trange
 from typing import *
 
-from .score import *
+from ..score import *
 
 
 ACTIVATIONS = {
