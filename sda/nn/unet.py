@@ -168,6 +168,7 @@ class UNet(nn.Module):
                     )
                 )
             else:
+                # these are the first block and the last block in the convolutions
                 heads.append(convolution(in_channels, hidden_channels[i], **kwargs))
                 tails.append(convolution(hidden_channels[i], out_channels, **kwargs))
 

@@ -387,7 +387,19 @@ def main(args):
                 x_star = torch.from_numpy(f['x'][10, :trajectory_length])
 
             # for i in range(frame_to_be_generated):
+            if trajectory_length > 10:
+                vorticity_true_trajectory = chain.vorticity(x_star[::(trajectory_length//10)])
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+            else:
+                vorticity_true_trajectory = chain.vorticity(x_star)
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
 
+            if args.save_gif:
+                vorticity_true_trajectory = chain.vorticity(x_star)
+                save_gif(vorticity_true_trajectory.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+            
             raise NotImplementedError(f'Still under construction for moving_forecast_window')
 
         else:

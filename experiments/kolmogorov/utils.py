@@ -47,6 +47,8 @@ class SpecialScoreUNet(ScoreUNet):
         x, f = broadcast(x, self.forcing, ignore=3)
         x = torch.cat((x, f), dim=-3)
 
+        # Discarding the last channel because it is the one
+        # related to the forcing we are adding in the input.
         return super().forward(x, t)[..., :-1, :, :]
 
 
@@ -60,6 +62,11 @@ def make_score(
     **absorb,
 ) -> nn.Module:
     score = MCScoreNet(2, order=window // 2)
+    # NOTE: here we are overriding the kernel with a SpecialScoreUnet
+    # the main difference is that the total number of channels are now 
+    # (window * 2 + 1) because we are considering a forcing channel/
+    # However in the output we are discarding it because we are not interested
+    # in the score of that channel.
     score.kernel = SpecialScoreUNet(
         channels=window * 2,
         embedding=embedding,

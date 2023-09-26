@@ -30,6 +30,10 @@ def make_global_score(
     activation: str = 'SiLU',
     **absorb,
 ) -> nn.Module:
+    # NOTE: we are using Conv1D in this case by forcing spatial = 1
+    # we are also using embedding = 32
+    # hidden_channels = (64,)
+    # hidden_blocks = (3,)
     return ScoreUNet(
         channels=3,
         embedding=embedding,
