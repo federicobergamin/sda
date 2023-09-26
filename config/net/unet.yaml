@@ -1,0 +1,10 @@
+_target_: sda.nn.unet.UNet
+# in_channels: int
+# out_channels: int
+context: 1
+hidden_channels: [32,64,128]
+hidden_blocks: [2,3,5]
+kernel_size: 3
+stride: 2
+activation: 'ReLU'
+padding_mode: 'circular'

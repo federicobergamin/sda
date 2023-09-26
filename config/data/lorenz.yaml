@@ -1,0 +1,4 @@
+name: lorenz
+path: ${data_dir}/lorenz
+spatial: 3
+grid_size: []

@@ -2,22 +2,24 @@
 
 name: lorenz
 
-# defaults:
-#   - /data: cyclic
-#   - /net: e3nn
+defaults:
+  - /data: lorenz
+  - /net: resnet
+  - /score: net
 #   - override /lr_schedule: constant
 
+window: 5
+
 score:
-  local: true
+  embedding: 32
 
 net:
-  window: 5
-  embedding: 32
-  width: 256
-  depth: 5
-  hidden_channels: (64,)
-  hidden_blocks: (3,)
+  # hidden_features: [256,256,256,256,256]
+  # hidden_channels: [64]
+  # hidden_blocks: [3]
+  # channels: ${eval:2*${window}}
   activation: 'SiLU'
+  spatial: ${data.spatial}
 
 optim:
   lr: 1e-4
@@ -25,6 +27,6 @@ optim:
 
 # training:
 epochs: 1024
-epoch_size: 16384
+epoch_size: 16384 #TODO: what is this??
 batch_size: 64
 scheduler: 'linear'

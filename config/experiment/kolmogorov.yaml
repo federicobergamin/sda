@@ -1,0 +1,25 @@
+# @package _global_
+
+name: kolmogorov
+
+defaults:
+  - /data: kolmogorov
+
+net:
+  window: 5
+  # window: null
+  embedding: 64
+  hidden_channels: [96, 192, 384]
+  hidden_blocks: [3, 3, 3]
+  kernel_size: 3
+  activation: 'SiLU'
+  padding_mode: 'circular'
+
+optim:
+  lr: 2e-4
+  weight_decay: 1e-3
+
+# training:
+epochs: 1024
+batch_size: 32
+scheduler: 'linear'

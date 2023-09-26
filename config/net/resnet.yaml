@@ -1,0 +1,5 @@
+_target_: sda.nn.unet.ResMLP
+# features:
+# embedding: 16
+hidden_features: [256,256,256,256,256]
+# activation: 

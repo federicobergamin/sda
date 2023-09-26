@@ -1,0 +1,4 @@
+name: kolmogorov
+path: ${data_dir}/kolmogorov
+spatial: 2
+grid_size: [64,64]

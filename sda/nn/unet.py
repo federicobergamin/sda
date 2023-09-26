@@ -7,6 +7,8 @@ from torch import Tensor
 from typing import *
 from zuko.nn import LayerNorm
 
+from sda.nn.activations import ACTIVATIONS
+
 
 class ResidualBlock(nn.Sequential):
     r"""Creates a residual block."""
@@ -47,6 +49,7 @@ class ResMLP(nn.Sequential):
         activation: Callable[[], nn.Module] = nn.ReLU,
         **kwargs,
     ):
+        activation = ACTIVATIONS[activation] if isinstance(activation, str) else activation
         blocks = []
 
         for before, after in zip(
@@ -54,14 +57,17 @@ class ResMLP(nn.Sequential):
             (*hidden_features, out_features),
         ):
             if after != before:
-                blocks.append(nn.Linear(before, after, **kwargs))
+                # blocks.append(nn.Linear(before, after, **kwargs))
+                blocks.append(nn.Linear(before, after))
 
             blocks.append(
                 ResidualBlock(
                     LayerNorm(),
-                    nn.Linear(after, after, **kwargs),
+                    # nn.Linear(after, after, **kwargs),
+                    nn.Linear(after, after),
                     activation(),
-                    nn.Linear(after, after, **kwargs),
+                    # nn.Linear(after, after, **kwargs),
+                    nn.Linear(after, after),
                 )
             )
 
@@ -105,10 +111,11 @@ class UNet(nn.Module):
         **kwargs,
     ):
         super().__init__()
-
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.spatial = spatial
+
+        activation = ACTIVATIONS[activation] if isinstance(activation, str) else activation
 
         # Components
         convolution = {
@@ -182,11 +189,15 @@ class UNet(nn.Module):
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
         memory = []
+        print('x', x.shape)
+        print('y', y.shape)
 
         for head, blocks in zip(self.heads, self.descent):
+            print('head', head)
             x = head(x)
 
             for block in blocks:
+                print('block', block)
                 x = block(x, y)
 
             memory.append(x)
@@ -194,12 +205,14 @@ class UNet(nn.Module):
         memory.pop()
 
         for blocks, tail in zip(self.ascent, self.tails):
+            print('tail', tail)
             for block in blocks:
+                print('block', block)
                 x = block(x, y)
 
             if memory:
                 x = tail(x) + memory.pop()
             else:
                 x = tail(x)
-
+        raise
         return x

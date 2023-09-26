@@ -1,0 +1,19 @@
+n_input_scalar_components: int
+n_input_vector_components: int
+n_output_scalar_components: int
+n_output_vector_components: int
+time_history: int
+time_future: int
+hidden_channels: 64
+# hidden_channels: [64, 128, 256, 1024]
+activation: 'GELU'
+norm: true
+ch_mults: (1, 2, 2, 4)
+# ch_mults: (1, 2, 4, 16)
+is_attn: [false, false, false, false]
+mid_attn: false
+# n_blocks: 3 -> 2 for down and 3 for up??
+n_blocks: 2
+use1x1: false
+embed_dim: 32
+spatial: 2

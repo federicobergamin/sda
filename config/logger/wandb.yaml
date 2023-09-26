@@ -3,9 +3,8 @@ wandb:
     save_dir: null #${paths.logs_dir}
     name: ${str:${seed}}
     group: ${name}_${hydra:job.override_dirname}
-    # entity: oxcsml
     # entity: cbl-mlg
-    entity: emilem
+    # entity: emilem
     project: sda
     offline: False
     id: null
