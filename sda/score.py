@@ -198,7 +198,7 @@ class VPSDE(nn.Module):
     def __init__(
         self,
         eps: nn.Module,
-        shape: Size,
+        shape: Size = (),
         alpha: str = 'cos',
         eta: float = 1e-3,
     ):

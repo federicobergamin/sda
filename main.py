@@ -146,52 +146,58 @@ def main(cfg):
 
     # Training
     optimizer = instantiate(cfg.optim, params=sde.parameters())
-    generator = loop(
-        sde,
-        trainset,
-        validset,
-        optimizer,
-        **cfg,
-        device='cuda',
-    )
 
-    for loss_train, loss_valid, lr in generator:
-        logger.log_metrics({
-            'loss_train': loss_train,
-            'loss_valid': loss_valid,
-            'lr': lr,
-        })
+    if cfg.mode in ['train', 'all']:
+        generator = loop(
+            sde,
+            trainset,
+            validset,
+            optimizer,
+            **cfg,
+            device='cuda',
+        )
 
-    # Save
-    torch.save(
-        score.state_dict(),
-        f"{cfg.ckpt_dir} / score.pth",
-    )
+        for loss_train, loss_valid, lr in generator:
+            logger.log_metrics({
+                'loss_train': loss_train,
+                'loss_valid': loss_valid,
+                'lr': lr,
+            })
 
-    # Evaluation
-    if cfg.name == 'lorenz':
-        # NOTE [Understand if it's correct or not]: here at evaluation time the score of our SDE is just the score.kernel
-        # so we are not using the Algorithm 2 here to constuct the score neither.
-        from sda.expriments.lorenz.utils import make_chain
-        chain = make_chain()
+        # Save
+        torch.save(
+            score.state_dict(),
+            f"{cfg.ckpt_dir} / score.pth",
+        )
 
-        x = sde.sample((4096,), steps=64).cpu()
-        x = x.unflatten(-1, (-1, 3))
-        # x = x.transpose(-1, -2) #NOTE: global
-        x = chain.postprocess(x)
+    if cfg.mode in ['eval', 'all']:
+        if cfg.mode == 'eval':
+            # TODO: load score from checkpoint
+            raise NotImplementedError()
+        # Evaluation
+        if cfg.name == 'lorenz':
+            # NOTE [Understand if it's correct or not]: here at evaluation time the score of our SDE is just the score.kernel
+            # so we are not using the Algorithm 2 here to constuct the score neither.
+            from sda.expriments.lorenz.utils import make_chain
+            chain = make_chain()
 
-        log_p = chain.log_prob(x[:, :-1], x[:, 1:]).mean()
-        logger.log_metrics({'log_p': log_p})
+            x = sde.sample((4096,), steps=64).cpu()
+            x = x.unflatten(-1, (-1, 3))
+            # x = x.transpose(-1, -2) #NOTE: global
+            x = chain.postprocess(x)
 
-    elif cfg.name == 'kolmogorov':
-        from sda.experiments.kolmogorov.utils import draw
-        x = sde.sample((2,), steps=64).cpu()
-        x = x.unflatten(1, (-1, 2))
-        w = KolmogorovFlow.vorticity(x)
-        # run.log({'samples': wandb.Image(draw(w))})
-        logger.log_image('vorticity', draw(w))
-    else:
-        raise ValueError('cfg.name should be either lorenz or kolmogorov but got {}'.format(cfg.name))
+            log_p = chain.log_prob(x[:, :-1], x[:, 1:]).mean()
+            logger.log_metrics({'log_p': log_p})
+
+        elif cfg.name == 'kolmogorov':
+            from sda.experiments.kolmogorov.utils import draw
+            x = sde.sample((2,), steps=64).cpu()
+            x = x.unflatten(1, (-1, 2))
+            w = KolmogorovFlow.vorticity(x)
+            # run.log({'samples': wandb.Image(draw(w))})
+            logger.log_image('vorticity', draw(w))
+        else:
+            raise ValueError('cfg.name should be either lorenz or kolmogorov but got {}'.format(cfg.name))
 
     logger.close()
 
