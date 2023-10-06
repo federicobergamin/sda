@@ -15,6 +15,7 @@ from utils import *
 from pathlib import Path
 from tqdm import tqdm
 import argparse
+import time
 
 def main(args):
     chain = make_chain()
@@ -374,56 +375,293 @@ def main(args):
         moving_forecast_window = args.moving_forecast_window
         trajectory_length = args.trajectory_length
         conditioned_frame = args.conditioned_frame
+        markov_blanket_window = 5 # this is 
+        test_traj_index = args.test_trajectory_index
+        save_trajectory = args.save_trajectory
+        predictive_steps = args.predictive_steps
+        correction_steps = args.correction_steps
+        prediction_horizon = args.prediction_horizon # this should be also our slide
+        likeihood_noise = 0.05
+        saving_dir = '/scratch/fedbe/sda/experiments/kolmogorov/sampled_trajectories/'
+        
+        # plot_dir = '../experiments/kolmogorov/'
+        plot_dir = ''
 
+        #t TODO/NOTE: there is some stochasticity that leads the two methods to different
+        # resutls even in cases where they are computing the same thing
+        
+        torch.backends.cudnn.deterministic = True
         if moving_forecast_window:
+            print('AUTOREGRESSIVE FORECAST')
             # here I have to implement forecasting in a autoregressive way.
             # Therefore we sample always one frame conditioned on the last 
             # [conditioned_frame]. Therefore we condition on also the last sampled
             # frames from our model.
-
+            # NOTE: minimal horizon for forecasting is indeed given by markov blanket size - 
+            # length of previous observations we are conditioning over, so if 
+            # the markov blanket is of size 3 {-1, 0, +1} , with 2 past observations, 
+            # then the horizon is at least 1 step further right
+            
+            # current implementation assume that everytime we are going to generate
+            # conditioned_frame + prediction_horizon states. Maybe the naming is not perfect,
+            # but if we want I can make that we consider the conditioned_frame already inside
+            # the prediction_horizon value. Don't know which one is better 
+            if conditioned_frame + prediction_horizon <= markov_blanket_window:
+                stride = prediction_horizon
+                shorter = True
+            else:
+                stride = prediction_horizon
+                shorter = False
+        
             # let's start by loading the data
             with h5py.File(PATH_DATA / 'data/test.h5') as f:
                 # consider the first 15 states of the tenth trajectory
-                x_star = torch.from_numpy(f['x'][10, :trajectory_length])
+                x_star = torch.from_numpy(f['x'][test_traj_index, :trajectory_length])
 
             # for i in range(frame_to_be_generated):
+            print(trajectory_length)
+            print(trajectory_length//10)
+            # NOTE (trajectory_length//10) IS WRONG FIX IT. IT'S NOT DOING THE THING I WANTED, OR AT LEAST IT DOES IT ONLY IF I CAN DIVIDE BY 10
             if trajectory_length > 10:
                 vorticity_true_trajectory = chain.vorticity(x_star[::(trajectory_length//10)])
-                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}.png')
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_zoom2.png')
             else:
                 vorticity_true_trajectory = chain.vorticity(x_star)
-                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plots_testing_new_implementation/autoregressive_forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plots_testing_new_implementation/autoregressive_forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
 
             if args.save_gif:
                 vorticity_true_trajectory = chain.vorticity(x_star)
-                save_gif(vorticity_true_trajectory.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+                save_gif(vorticity_true_trajectory.reshape(trajectory_length, 64, 64), f'plots_testing_new_implementation/autoregressive_forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
             
-            raise NotImplementedError(f'Still under construction for moving_forecast_window')
+            # I can define the likelihood
+            def A(x):
+                # let's say that as initial example I am conditioning on 
+                # the vorticity of the first two states
+                # NOTE: the conditioned frame will vary after the first step
+                # return chain.vorticity(x[..., :args.conditioned_frame, :, :, :]) #* mask
+                return x[..., :conditioned_frame, :, :, :] 
 
+            # TODO: I HATE THIS SOLUTION, I WANT TO FIND A BETTER ONE
+            
+            
+            # sampled_traj = []
+            idx_start = 0
+            if shorter:
+                idx_end = markov_blanket_window
+                _iter = trajectory_length //markov_blanket_window
+                sampled_traj = torch.zeros((_iter+1) * markov_blanket_window, 2, 64, 64)
+            else:
+                idx_end = conditioned_frame+prediction_horizon
+                _iter = trajectory_length // (conditioned_frame+prediction_horizon)
+                sampled_traj = torch.zeros((_iter+1) * (conditioned_frame+prediction_horizon), 2, 64, 64)
+            
+            start_time = time.time()
+            i = 0
+            print('Idx end')
+            print(idx_end)
+            subtrajectory_length = idx_end - idx_start #if (idx_end - idx_start) < trajectory_length else trajectory_length
+            print('subtrajectory lenght')
+            print(subtrajectory_length)
+            while idx_start < trajectory_length:
+                if i == 0:
+                    # FIRST STEP OF THE AUTOREGRESSIVE GENERATION
+                    # I have to conditioned on the true observations
+                    torch.manual_seed(args.seed)
+                    np.random.seed(args.seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed(args.seed)
+                    y_star = torch.normal(A(x_star),likeihood_noise)
+                    vorticity_y_star = chain.vorticity(y_star)
+                    draw(vorticity_y_star.reshape(1, conditioned_frame, 64, 64), zoom=2).save(plot_dir + f'plots_testing_new_implementation/y_star_autoregressive_zoom2.png')
+
+                    print(f'Time {i}, conditioning shape')
+                    print(y_star.shape)
+                    sde = VPSDE(
+                        GaussianScore(
+                            y_star,
+                            A=A,
+                            std=likeihood_noise,
+                            sde=VPSDE(score, shape=()),
+                        ),
+                        shape=(subtrajectory_length, 2, 64, 64),
+                    ).cuda()
+
+                    # sample from it
+                    # I want to fix the seed
+                    torch.manual_seed(args.seed)
+                    np.random.seed(args.seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed(args.seed)
+                    x = sde.sample(steps=predictive_steps, corrections=correction_steps, tau=0.5).cpu()
+
+                    # IN THE FIRST STEP I WILL KEEP ALL THE GENERATED STATES
+                    sampled_traj[idx_start:idx_end, :, :, :] = x
+                    # sampled_traj.append(x)
+
+                else:
+                    # STEPS AT T>0: I WILL CONDITION ON THE PREVIOUSLY GENERATED STATES
+                    print('i >0')
+                    y_star = A(sampled_traj[idx_start:idx_end])
+                    print(f'Time {i}, conditioning shape')
+                    print(y_star.shape)
+                    sde = VPSDE(
+                        GaussianScore(
+                            y_star,
+                            A=A,
+                            std=likeihood_noise,
+                            sde=VPSDE(score, shape=()),
+                        ),
+                        shape=(subtrajectory_length, 2, 64, 64),
+                    ).cuda()
+                    
+                    x = sde.sample(steps=predictive_steps, corrections=correction_steps, tau=0.5).cpu()
+                    # here I have to keep only the frames in the predictive horizon
+                    # here the could be a problem that I am generating a longer sequence than the 
+                    # one I need.
+                    sampled_traj[idx_start+args.conditioned_frame:idx_end, :, :, :] = x[...,args.conditioned_frame:, :, : ,:]
+                    # sampled_traj.append(x[...,args.conditioned_frame:, :, : ,:])
+
+
+                i += 1
+                if shorter:
+                    idx_start = i*stride
+                    idx_end = i*stride+markov_blanket_window
+                    # sampled_traj[idx_start:idx_end] +=1
+                else:
+                    idx_start = i*stride
+                    idx_end = i*stride+conditioned_frame+prediction_horizon
+                    # sampled_traj[idx_start:idx_end] +=1
+
+            ### NOTE: I AM REWRITING THIS PART THAT WAS PREVIOSLY WORKING FOR
+            # start_time = time.time()
+            # for t in range(trajectory_length - markov_blanket_window+1):
+            #     if t == 0:
+            #         print('First autoregressive step')
+            #         # at the first step with condition on the initial conditioned frame
+            #         # define the y_star we are conditioning on and the shape of the trajectory
+            #         # we still condition on the vorticity
+            #         def A(x):
+            #             # let's say that as initial example I am conditioning on 
+            #             # the vorticity of the first two states
+            #             # NOTE: the conditioned frame will vary after the first step
+            #             # return chain.vorticity(x[..., :args.conditioned_frame, :, :, :]) #* mask
+            #             return x[..., :args.conditioned_frame, :, :, :] #* mask
+
+
+            #         y_star = torch.normal(A(x_star), 0.05)
+
+            #         # I can define the sde with the likelihood score conditioned on the first 
+            #         # two frames
+            #         sde = VPSDE(
+            #             GaussianScore(
+            #                 y_star,
+            #                 A=A,
+            #                 std=0.05,
+            #                 sde=VPSDE(score, shape=()),
+            #             ),
+            #             shape=(markov_blanket_window, 2, 64, 64),
+            #         ).cuda()
+
+            #         # sample from it
+            #         x = sde.sample(steps=predictive_steps, corrections=correction_steps, tau=0.5).cpu()
+
+            #         # at t == 0 I will store the full sample
+            #         # sampled_traj[0:markov_blanket_window, :, :, :] = x
+            #         sampled_traj.append(x)
+
+
+            #     else:
+            #         # on all the other steps I am conditioning on the previously window-1 frame generated
+            #         conditioned_frame_t_bigger_0 = markov_blanket_window - 1
+            #         # start = t
+            #         def A(x):
+            #             # let's say that as initial example I am conditioning on 
+            #             # the vorticity of the first two states
+            #             # NOTE: the conditioned frame will vary after the first step
+            #             # return chain.vorticity(x[..., :conditioned_frame_t_bigger_0, :, :, :]) #* mask
+            #             return x[..., :conditioned_frame_t_bigger_0, :, :, :]
+
+            #         # the y_star I am conditioning on are the generated samples
+            #         # TODO: CONSIDER NOT TO NOISE this one
+            #         # y_star = torch.normal(A(sampled_traj[t:(t+markov_blanket_window)]), 0.05)
+            #         y_star = A(sampled_traj[t:(t+markov_blanket_window)])
+
+            #         print('Indices considered')
+            #         print(t, t + conditioned_frame_t_bigger_0)
+            #         print(f't={t} in the autoregressive chain. Ystar shape is the follwowing')
+            #         print(y_star.shape)
+
+            #         # now I can define the sde 
+            #         sde = VPSDE(
+            #             GaussianScore(
+            #                 y_star,
+            #                 A=A,
+            #                 std=0.05,
+            #                 sde=VPSDE(score, shape=()),
+            #             ),
+            #             shape=(markov_blanket_window, 2, 64, 64),
+            #         ).cuda()
+
+            #         x = sde.sample(steps=predictive_steps, corrections=correction_steps, tau=0.5).cpu()
+
+            #         # and now I have to store only the last sample
+            #         # sampled_traj[markov_blanket_window+(t-1), :, : , :] = x[-1,:, :, :]
+            #         sampled_traj.append(x[-1,:, :, :])
+
+
+
+
+            end_time = time.time()
+            print(len(sampled_traj))
+            if len(sampled_traj) > trajectory_length:
+                sampled_traj = sampled_traj[...,:trajectory_length,:,:,:]
+
+            # print(sampled_traj[-1,:,:,:])
+            # print(x_star - sampled_traj)
+            print(f'It took {end_time - start_time} to sample autoregressively')
+
+            if save_trajectory:
+                torch.save(sampled_traj, saving_dir + f'traj_idx_{test_traj_index}_autoregressive_len_{trajectory_length}_conditioned_on_{conditioned_frame}_frame.pt')
+            # at the end then I can compute the vorticity of trajectory and compare it with
+            # the one of true one
+            if trajectory_length > 10:
+                vorticity_sda = chain.vorticity(sampled_traj[::(trajectory_length//10)])
+                draw(vorticity_sda.reshape(1, 10, 64, 64)).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_predictive_steps_{predictive_steps}_correction_steps_{correction_steps}_horizon_{prediction_horizon}.png')
+                draw(vorticity_sda.reshape(1, 10, 64, 64), zoom=2).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_predictive_steps_{predictive_steps}_correction_steps_{correction_steps}_horizon_{prediction_horizon}_zoom2.png')
+            else:
+                vorticity_sda = chain.vorticity(sampled_traj)
+                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64)).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64), zoom=2).save(plot_dir + f'plots_testing_new_implementation/autoregressive_forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+        
+            if args.save_gif:
+                vorticity_sda = chain.vorticity(sampled_traj)
+                save_gif(vorticity_sda.reshape(trajectory_length, 64, 64), f'plots_forecast_understanding/autoregressive_forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+        
         else:
+            print('ALL-AT-ONCE FORECAST')
             # trying to implement a naive way of forecasting, can be completely wrong to be honest, but let'see
             # also at the moment it's not autoregressive, so we are not using the space in a very smart way.
             # See this as version 0.0.1
             with h5py.File(PATH_DATA / 'data/test.h5') as f:
                 # consider the first 15 states of the tenth trajectory
-                x_star = torch.from_numpy(f['x'][10, :trajectory_length]) # this should be something like  (15, 2, 64,64)
+                x_star = torch.from_numpy(f['x'][test_traj_index, :trajectory_length]) # this should be something like  (15, 2, 64,64)
             
             print(x_star.shape) #(trajectory_length, 2, 64, 64)
 
             if trajectory_length > 10:
                 vorticity_true_trajectory = chain.vorticity(x_star[::(trajectory_length//10)])
-                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64)).save(plot_dir + f'plots_forecast_understanding/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}.png')
+                draw(vorticity_true_trajectory.reshape(1, 10, 64, 64), zoom=2).save(plot_dir + f'plots_forecast_understanding/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_zoom2.png')
             else:
                 vorticity_true_trajectory = chain.vorticity(x_star)
-                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64)).save(f'plots_forecast_understanding/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_true_trajectory.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plots_forecast_understanding/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
 
             if args.save_gif:
                 vorticity_true_trajectory = chain.vorticity(x_star)
-                save_gif(vorticity_true_trajectory.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+                save_gif(vorticity_true_trajectory.reshape(trajectory_length, 64, 64), f'plots_forecast_understanding/forecast_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
             # now I have to define my A(x) and mask I guess
             # mask = np.ones((conditioned_frame, 64, 64), dtype=bool)
             # mask[:, :conditioned_frame, :, :] = True
@@ -433,17 +671,24 @@ def main(args):
                 # let's say that as initial example I am conditioning on 
                 # the vorticity of the first two states
                 # TODO: Conditioning on different stuff
-                return chain.vorticity(x[..., :conditioned_frame, :, :, :]) #* mask
+                # return chain.vorticity(x[..., :conditioned_frame, :, :, :]) #* mask
+                return x[..., :conditioned_frame, :, :, :] #* mask
+
             
             print('Conditioned frames shapes')
             print(A(x_star).shape)
-            y_star = torch.normal(A(x_star), 0.05)
-
+            torch.manual_seed(args.seed)
+            np.random.seed(args.seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(args.seed)
+            y_star = torch.normal(A(x_star), likeihood_noise)
+            vorticity_y_star = chain.vorticity(y_star)
+            draw(vorticity_y_star.reshape(1, conditioned_frame, 64, 64), zoom=2).save(plot_dir + f'plots_testing_new_implementation/y_star_allatonce_zoom2.png')
             
-            print('y_star shape')
-            print(y_star.shape)
-            draw(y_star.reshape(1,  conditioned_frame, 64, 64)).save(f'plot_trying_stuff/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-            draw(y_star.reshape(1, conditioned_frame, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+            # print('y_star shape')
+            # print(y_star.shape)
+            # draw(y_star.reshape(1,  conditioned_frame, 64, 64)).save(plot_dir+ f'plots_forecast_understanding/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}.png')
+            # draw(y_star.reshape(1, conditioned_frame, 64, 64), zoom=2).save(plot_dir+f'plots_forecast_understanding/forecast_conditioned_true_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_zoom2.png')
 
 
             # now I can try both SDA and DSP and check if I can get something interesting out
@@ -451,57 +696,70 @@ def main(args):
                 GaussianScore(
                     y_star,
                     A=A,
-                    std=0.1,
+                    std=likeihood_noise,
                     sde=VPSDE(score, shape=()),
                 ),
                 shape=(trajectory_length, 2, 64, 64),
             ).cuda()
 
-            x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
+            start_time = time.time()
+            # I want to fix the seed
+            torch.manual_seed(args.seed)
+            np.random.seed(args.seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(args.seed)
+            x = sde.sample(steps=predictive_steps, corrections=correction_steps, tau=0.5).cpu()
+            end_time = time.time()
+            # print(sampled_traj[-1,:,:,:])
+            # print(x_star - sampled_traj)
+            print(f'It took {end_time - start_time} to sample all-at-once')
 
+            if save_trajectory:
+                torch.save(x, saving_dir + f'traj_idx_{test_traj_index}_all_at_once_len_{trajectory_length}_conditioned_on_{conditioned_frame}_frame.pt')
+            
             if trajectory_length > 10:
                 vorticity_sda = chain.vorticity(x[::(trajectory_length//10)])
-                draw(vorticity_sda.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_sda.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_sda.reshape(1, 10, 64, 64)).save(plot_dir +f'plots_testing_new_implementation/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_predictive_steps_{predictive_steps}_correction_steps_{correction_steps}.png')
+                draw(vorticity_sda.reshape(1, 10, 64, 64), zoom=2).save(plot_dir +f'plots_testing_new_implementation/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_idx_{test_traj_index}_predictive_steps_{predictive_steps}_correction_steps_{correction_steps}_zoom2.png')
             else:
                 vorticity_sda = chain.vorticity(x)
-                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64)).save(plot_dir +f'plots_testing_new_implementation/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+                draw(vorticity_sda.reshape(1, trajectory_length, 64, 64), zoom=2).save(plot_dir +f'plots_testing_new_implementation/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
         
             if args.save_gif:
                 vorticity_sda = chain.vorticity(x)
-                save_gif(vorticity_sda.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+                save_gif(vorticity_sda.reshape(trajectory_length, 64, 64), f'plots_forecast_understanding/forecast_sda_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
 
             # now I can train DSP
-            sde = VPSDE(
-                DPSGaussianScore(
-                    y_star,
-                    A=A,
-                    zeta=1.0,
-                    sde=VPSDE(score, shape=()),
-                ),
-                shape=(trajectory_length, 2, 64, 64),
-            ).cuda()
+            # sde = VPSDE(
+            #     DPSGaussianScore(
+            #         y_star,
+            #         A=A,
+            #         zeta=1.0,
+            #         sde=VPSDE(score, shape=()),
+            #     ),
+            #     shape=(trajectory_length, 2, 64, 64),
+            # ).cuda()
 
-            x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
+            # x = sde.sample(steps=512, corrections=correction_steps, tau=0.5).cpu()
 
-            if trajectory_length > 10:
-                vorticity_dsp = chain.vorticity(x[::(trajectory_length//10)])
-            else:
-                vorticity_dsp = chain.vorticity(x)
+            # if trajectory_length > 10:
+            #     vorticity_dsp = chain.vorticity(x[::(trajectory_length//10)])
+            # else:
+            #     vorticity_dsp = chain.vorticity(x)
 
-            if trajectory_length > 10:
-                vorticity_dsp = chain.vorticity(x[::(trajectory_length//10)])
-                draw(vorticity_dsp.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_dsp.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
-            else:
-                vorticity_dsp = chain.vorticity(x)
-                draw(vorticity_dsp.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
-                draw(vorticity_dsp.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
+            # if trajectory_length > 10:
+            #     vorticity_dsp = chain.vorticity(x[::(trajectory_length//10)])
+            #     draw(vorticity_dsp.reshape(1, 10, 64, 64)).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_correction_steps_{correction_steps}.png')
+            #     draw(vorticity_dsp.reshape(1, 10, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_correction_steps_{correction_steps}_zoom2.png')
+            # else:
+            #     vorticity_dsp = chain.vorticity(x)
+            #     draw(vorticity_dsp.reshape(1, trajectory_length, 64, 64)).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.png')
+            #     draw(vorticity_dsp.reshape(1, trajectory_length, 64, 64), zoom=2).save(f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_zoom2.png')
 
-            if args.save_gif:
-                vorticity_dsp = chain.vorticity(x)
-                save_gif(vorticity_sda.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}.gif')
+            # if args.save_gif:
+            #     vorticity_dsp = chain.vorticity(x)
+            #     save_gif(vorticity_sda.reshape(trajectory_length, 64, 64), f'plot_trying_stuff/forecast_dsp_vorticity_traj_len_{trajectory_length}_cond_frame_{conditioned_frame}_correction_steps_{correction_steps}.gif')
 
     else:
         raise NotImplementedError(f'We do not have an implementation for {args.experiment} experiment')
@@ -517,9 +775,13 @@ if __name__ == "__main__":
     # arguments for forecasting
     parser.add_argument('--conditioned_frame', '-cond_frame', type=int, default=2, help='Number of frames we conditioned on for forecasting')
     parser.add_argument('--trajectory_length', '-traj_len', type=int, default=10, help='Trajectory length')
+    parser.add_argument('--test_trajectory_index', '-traj_idx', type=int, default=10, help='Index of the test trajectory to use as reference')
     parser.add_argument('--moving_forecast_window', '-moving_wind', default=False, type=bool, help='Forecasting with a moving window of size [conditioned_frame]. Corresponds to forecast in an autoregressive way.')
     parser.add_argument('--save_gif', '-gif', default=False, type=bool, help='Create a gif for the Kolmogorov systems')
-    
+    parser.add_argument('--save_trajectory', '-save_traj', default=False, type=bool, help='Save the generated trajectories')
+    parser.add_argument('--predictive_steps', '-pred_steps', default=512, type=int, help='Number of predictive steps used in generation')
+    parser.add_argument('--correction_steps', '-corrections', default=1, type=int, help='Number of correction/langevin steps used in generation')
+    parser.add_argument('--prediction_horizon', '-pred_horizon', default=1, type=int, help='Number of frames we want to predict at every autoregressive step')
     args = parser.parse_args()
     main(args)
 

@@ -36,7 +36,16 @@ experiments/lorenz/statistics.pdf
 experiments/lorenz/statistics.png
 experiments/kuramoto
 sda/eval_metrics.py
-
+experiments/kolmogorov/avg_mse_avg_also_on_state_no_aao_std.png 
+experiments/kolmogorov/avg_mse_avg_also_on_state_no_aao.png
+experiments/kolmogorov/avg_mse_avg_also_on_state.png
+experiments/kolmogorov/avg_mse_vorticity_no_aao.png
+experiments/kolmogorov/avg_mse_vorticity_no_aao.png
+experiments/kolmogorov/ckpt/
+experiments/kolmogorov/avg_mse_per_state.png
+experiments/kolmogorov/avg_mse_vorticity.png
+experiments/kolmogorov/avg_mse_vorticity.png
+experiments/kolmogorov/forecast_sampler.py
 ##########
 # Python #
 ##########
