@@ -189,15 +189,15 @@ class UNet(nn.Module):
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
         memory = []
-        print('x', x.shape)
-        print('y', y.shape)
+        # print('x', x.shape)
+        # print('y', y.shape)
 
         for head, blocks in zip(self.heads, self.descent):
-            print('head', head)
+            # print('head', head)
             x = head(x)
 
             for block in blocks:
-                print('block', block)
+                # print('block', block)
                 x = block(x, y)
 
             memory.append(x)
@@ -205,14 +205,14 @@ class UNet(nn.Module):
         memory.pop()
 
         for blocks, tail in zip(self.ascent, self.tails):
-            print('tail', tail)
+            # print('tail', tail)
             for block in blocks:
-                print('block', block)
+                # print('block', block)
                 x = block(x, y)
 
             if memory:
                 x = tail(x) + memory.pop()
             else:
                 x = tail(x)
-        raise
+
         return x
