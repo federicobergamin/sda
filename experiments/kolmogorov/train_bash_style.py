@@ -18,8 +18,8 @@ from utils import *
 import argparse
 
 def main(args):
-    DATA_PATH = Path('/scratch/fedbe/sda/kolmogorov')
-    SCRATCH_PATH = Path('/scratch/fedbe/sda/experiments/kolmogorov')
+    DATA_PATH = Path('./scratch/cdd/sda/kolmogorov')
+    SCRATCH_PATH = Path('./scratch/cdd/sda/experiments/kolmogorov')
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)

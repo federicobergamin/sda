@@ -34,11 +34,11 @@ def main():
     # let's start by creating the correct directory
     # NOTE: since I am reaching the files quota, I will save everything
     # in scratch
-    PATH = Path('/scratch/fedbe') / 'sda/kolmogorov'
+    PATH = Path('./scratch/cdd') / 'sda/kolmogorov'
     (PATH / 'data').mkdir(parents=True, exist_ok=True)
     print(PATH)
 
-    # then we have to create 1024 trajectories of lenght 128
+    # then we have to create 1024 trajectories of length 128
     for i in tqdm(range(1024), desc='Simulation'):
         # we create a KolmogorovFlow object
         chain = make_chain()
