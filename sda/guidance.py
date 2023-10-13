@@ -5,7 +5,7 @@ from torch import Tensor, nn
 from torch.func import grad_and_value, grad, vmap
 from torch.distributions import Normal
 
-from sda.score import VPSDE
+from sda.sde import VPSDE
 
 
 # class ForwardOperator(ABC):
@@ -22,6 +22,7 @@ from sda.score import VPSDE
 ######################################################
 
 class Likelihood(ABC, nn.Module):
+    """ p(y|x_0) = p(y|A(x)) """
     def __init__(self, y: Tensor, A: Callable[[Tensor], Tensor]):
         super().__init__()
         self.register_buffer('y', y)
@@ -39,6 +40,7 @@ class Likelihood(ABC, nn.Module):
 
 
 class Gaussian(Likelihood):
+    """ p(y|x_0) = N(y|A(x), std^2) """
     def __init__(self, y: Tensor, A: Callable[[Tensor], Tensor], std: float = 1.0):
         super().__init__(y, A)
         self.std = std
@@ -110,8 +112,9 @@ class Reconstruction(GuidedScore):
             x_ = (x - sigma * eps) / mu
             var_x0_xt = self.gamma * (sigma / mu) ** 2
             # err = self.likelihood.log_prob(x_, var_x0_xt)
-            var_tot = self.std ** 2 + var_x0_xt
-            err = -(self.err(x_) ** 2 / var_tot).sum() / 2
+            # NOTE: missing A A^\top?
+            var_tot = self.likelihood.std ** 2 + var_x0_xt
+            err = -(self.likelihood.err(x_) ** 2 / var_tot).sum() / 2
     
             return err, eps
 

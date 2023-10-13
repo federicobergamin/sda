@@ -519,7 +519,7 @@ if __name__ == "__main__":
     x = torch.randn(2, seq_length, 1)
     t = torch.randn(2, seq_length, 1)
 
-    from sda.score import TimeEmbedding
+    from sda.nn import TimeEmbedding
     embedding = TimeEmbedding(embed_dim)
     t = embedding(t)
 

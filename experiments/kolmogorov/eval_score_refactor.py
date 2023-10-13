@@ -9,6 +9,7 @@ import torch
 
 from sda.mcs import *
 from sda.score import *
+from sda.sde import VPSDE
 from sda.utils import *
 
 from utils import *
@@ -60,19 +61,18 @@ def main(args):
             # x[..., -1, :, :, :] is considering only the last state I guess
             return chain.vorticity(x[..., -1, :, :, :]) * mask
         
-        # we define our VSPDE noise scheduler, where now the score
-        # we are using is conditioned on the observations. In this specific example
-        # we are conditioning on the observation that
         likelihood = Gaussian(y=0.6 * mask, A=A, std=0.2)
         guided_score = Reconstruction(VPSDE(score), likelihood, gamma=1.)
-        sde = guided_score.get_sde(shape=(8, 2, 64, 64)).cuda()
+        # sde = guided_score.get_sde(shape=(8, 2, 64, 64)).cuda()
+        sde = VPSDE(guided_score, shape=(8, 2, 64, 64)).cuda()
 
         # here we sample from the SDE conditioned on a circle vorticity mask on the last state I guess
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_circle.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_circle_zoom_2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_circle.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_circle_zoom_2.png'))
+
 
     ######################################################
     ##################  Assimilation  ####################
@@ -86,8 +86,8 @@ def main(args):
         # we compute the vorticity of that trajectory every four step
         w = chain.vorticity(x_star[::4])
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_star_assim_true_vorticity.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_star_assim_true_vorticity_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_star_assim_true_vorticity.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_star_assim_true_vorticity_zoom2.png'))
 
         # we can define our observation process
         def A(x):
@@ -95,9 +95,9 @@ def main(args):
             # every four steps
             return chain.coarsen(x[..., ::4, :, :, :], 8)
 
-        # we create the observation we want to condition on.
-        # it's a noisy version, but noise is pretty low
-        y_star = torch.normal(A(x_star), 0.1)
+        likelihood = Gaussian(y=A(x_star), A=A, std=0.1)
+        y_star = likelihood.sample()
+        likelihood.set_observation(y_star)
 
         w = chain.vorticity(y_star) / 2.5
         # not sure if here we are getting back to a 64*64 version of our
@@ -105,14 +105,13 @@ def main(args):
         w = chain.upsample(w, 2, mode='nearest')
 
         # we can get the vorticity of the observed
-        draw(w.reshape(1, 8, 16, 16), pad=1, zoom=4).save('plots/y_star_assim_observed_vorticity.png')
-        draw(w.reshape(1, 8, 16, 16), pad=1, zoom=8).save('plots/y_star_assim_observed_vorticity_zoom_more.png')
+        draw(w.reshape(1, 8, 16, 16), pad=1, zoom=4).save(plot_folder.joinpath('y_star_assim_observed_vorticity.png'))
+        draw(w.reshape(1, 8, 16, 16), pad=1, zoom=8).save(plot_folder.joinpath('y_star_assim_observed_vorticity_zoom_more.png'))
 
 
         # now we want to compare both SDA approach to the likelihood score and the DPS approach
         likelihood = Gaussian(y=y_star, A=A, std=0.1)
         guided_score = Reconstruction(VPSDE(score), likelihood, gamma=1.)
-        # sde = VPSDE(guided_score, shape=x_star.shape).cuda()
         sde = guided_score.get_sde(shape=x_star.shape).cuda()
 
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
@@ -120,11 +119,10 @@ def main(args):
         # we have observed so we can actually compute them
         w = chain.vorticity(x[::4])
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_sda_assim.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_sda_assim_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_sda_assim.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_sda_assim_zoom2.png'))
 
-        print('SDA performance')
-        print((A(x) - y_star).std())  # should be ≈ 0.1
+        print('SDA performance', likelihood.err(x).std())  # should be ≈ 0.1
 
         guided_score = DPS(VPSDE(score), likelihood, zeta=1.)
         sde = guided_score.get_sde(shape=x_star.shape).cuda()
@@ -132,12 +130,10 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x[::4])
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_dps_assim.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_dps_assim_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_dps_assim.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_dps_assim_zoom2.png'))
 
-        print('DPS performance')
-        # print((A(x) - y_star).std())
-        print((likelihood.err(x)).std())
+        print('DPS performance', likelihood.err(x).std())
 
     ######################################################
     ##################  Extrapolation  ###################
@@ -150,8 +146,8 @@ def main(args):
 
         w = chain.vorticity(x_star)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_star_extrapolation_true_states.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_star_extrapolation_true_states_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_star_extrapolation_true_states.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_star_extrapolation_true_states_zoom2.png'))
 
         # let's define the observation process
         def A(x):
@@ -163,14 +159,14 @@ def main(args):
         likelihood = Gaussian(y=A(x_star), A=A, std=0.01)
         # y_star = torch.normal(A(x_star), 0.01)
         y_star = likelihood.sample()
-        likelihood.y = y_star
+        likelihood.set_observation(y_star)
         w = chain.vorticity(chain.coarsen(x_star, 4)) / 2
 
         mask = np.zeros((1, 8, 16, 16), dtype=bool)
         mask[:, ::3, 4:12, 4:12] = True
 
-        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=4).save('plots/y_star_extrapolation_true_vort.png')
-        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=8).save('plots/y_star_extrapolation_true_vort_zoom_more.png')
+        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=4).save(plot_folder.joinpath('y_star_extrapolation_true_vort.png'))
+        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=8).save(plot_folder.joinpath('y_star_extrapolation_true_vort_zoom_more.png'))
 
         # and as before we are going to compare both SDA and DPS
         guided_score = Reconstruction(VPSDE(score), likelihood)
@@ -179,11 +175,10 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_sda_extra.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_sda_extra_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_sda_extra.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_sda_extra_zoom2.png'))
 
-        print('SDA performance')
-        print((A(x) - y_star).std())  # should be ≈ 0.01
+        print('SDA performance', likelihood.err(x).std())
 
         guided_score = DPS(VPSDE(score), likelihood, zeta=1.0)
         sde = guided_score.get_sde(shape=x_star.shape).cuda()
@@ -191,8 +186,8 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_dps_extra.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_dps_extra_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_dps_extra.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_dps_extra_zoom2.png'))
         
         print('DPS performance')
         print((A(x) - y_star).std())
@@ -213,8 +208,8 @@ def main(args):
         print('w shape')
         print(w.shape)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_star_non_lin_saturation.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_star_non_lin_saturation_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_star_non_lin_saturation.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_star_non_lin_saturation_zoom2.png'))
 
         # define the observation process
         def A(x):
@@ -229,7 +224,7 @@ def main(args):
         likelihood = Gaussian(y=A(x_star), A=A, std=0.05)
         # y_star = torch.normal(A(x_star), 0.05)
         y_star = likelihood.sample()
-        likelihood.y = y_star
+        likelihood.set_observation(y_star)
         print('y_star shape')
         print(y_star.shape)
 
@@ -239,8 +234,8 @@ def main(args):
         mask = np.zeros((1, 8, 16, 16), dtype=bool)
         mask[..., ::3, 2:14, 2:14] = True
 
-        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=4).save('plots/y_star_non_lin_saturation.png')
-        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=8).save('plots/y_star_non_lin_saturation_zoom_more.png')
+        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=4).save(plot_folder.joinpath('y_star_non_lin_saturation.png'))
+        draw(w.reshape(1, 8, 16, 16), mask, pad=1, zoom=8).save(plot_folder.joinpath('y_star_non_lin_saturation_zoom_more.png'))
 
         # as before we compare SDA and DPS
         guided_score = Reconstruction(VPSDE(score), likelihood)
@@ -249,11 +244,10 @@ def main(args):
         x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_sda_non_lin_saturation.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_sda_non_lin_saturation_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_sda_non_lin_saturation.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_sda_non_lin_saturation_zoom2.png'))
 
-        print('SDA performance')
-        print((A(x) - y_star).std())
+        print('SDA performance', likelihood.err(x).std())
 
         guided_score = DPS(VPSDE(score), likelihood, zeta=1.0)
         sde = guided_score.get_sde(shape=x_star.shape).cuda()
@@ -261,8 +255,8 @@ def main(args):
         x = sde.sample(steps=512, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(1, 8, 64, 64)).save('plots/x_dps_non_lin_saturation.png')
-        draw(w.reshape(1, 8, 64, 64), zoom=2).save('plots/x_dps_non_lin_saturation_zoom2.png')
+        draw(w.reshape(1, 8, 64, 64)).save(plot_folder.joinpath('x_dps_non_lin_saturation.png'))
+        draw(w.reshape(1, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_dps_non_lin_saturation_zoom2.png'))
 
         print('DPS performance')
         print((A(x) - y_star).std())
@@ -280,8 +274,8 @@ def main(args):
         w = chain.vorticity(x_star)
         shape = (1, 8, 64, 64)
 
-        draw(w.reshape(*shape)).save('plots/x_star_subsampling_exp.png')
-        draw(w.reshape(*shape), zoom=2).save('plots/x_star_subsampling_exp_zoom2.png')
+        draw(w.reshape(*shape)).save(plot_folder.joinpath('x_star_subsampling_exp.png'))
+        draw(w.reshape(*shape), zoom=2).save(plot_folder.joinpath('x_star_subsampling_exp_zoom2.png'))
 
         # we can define the observation model
         def A(x):
@@ -291,7 +285,7 @@ def main(args):
         # y_star = torch.normal(A(x_star), 0.1)
         likelihood = Gaussian(y=A(x_star), A=A, std=0.1)
         y_star = likelihood.sample()
-        likelihood.y = y_star
+        likelihood.set_observation(y_star)
 
         w = chain.vorticity(x_star) / 2
 
@@ -334,8 +328,8 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x[::2])
 
-        draw(w.reshape(8, 8, 64, 64)).save('plots/x_loop.png')
-        draw(w.reshape(8, 8, 64, 64), zoom=2).save('plots/x_loop_zoom2.png')
+        draw(w.reshape(8, 8, 64, 64)).save(plot_folder.joinpath('x_loop.png'))
+        draw(w.reshape(8, 8, 64, 64), zoom=2).save(plot_folder.joinpath('x_loop_zoom2.png'))
 
     ######################################################
     ##################     Forecast    ###################
@@ -412,7 +406,7 @@ def main(args):
             print('Conditioned frames shapes')
             likelihood = Gaussian(y=A(x_star), A=A, std=0.05)
             y_star = likelihood.sample()
-            likelihood.y = y_star
+            likelihood.set_observation(y_star)
             # print(A(x_star).shape)
             # y_star = torch.normal(A(x_star), 0.05)
 

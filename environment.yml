@@ -23,3 +23,7 @@ dependencies:
     - zuko==0.1.4
     - hydra_core==1.3.2
     - hydra_colorlog==1.2.0
+    - hydra_colorlog==1.2.0
+    - hydra_joblib_launcher==1.1.5
+    - fsspec==2023.6.0
+    - wandb==0.15.5
