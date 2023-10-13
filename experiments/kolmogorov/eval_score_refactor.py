@@ -292,8 +292,8 @@ def main(args):
         mask = np.zeros(shape, dtype=bool)
         mask[..., ::subsampling_value, ::subsampling_value] = True
 
-        draw(w.reshape(*shape), mask).save(f'plots/y_star_subsampling_{subsampling_value}.png')
-        draw(w.reshape(*shape), mask, zoom=2).save(f'plots/y_star_subsampling_{subsampling_value}_zoom2.png')
+        draw(w.reshape(*shape), mask).save(plot_folder.joinpath(f'y_star_subsampling_{subsampling_value}.png'))
+        draw(w.reshape(*shape), mask, zoom=2).save(plot_folder.joinpath(f'y_star_subsampling_{subsampling_value}_zoom2.png'))
 
         # now we have to compare SDA and DSP
         guided_score = Reconstruction(VPSDE(score), likelihood)
@@ -302,8 +302,8 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(*shape)).save(f'plots/x_sda_subsampling_{subsampling_value}.png')
-        draw(w.reshape(*shape), zoom=2).save(f'plots/x_sda_subsampling_{subsampling_value}_zoom2.png')
+        draw(w.reshape(*shape)).save(plot_folder.joinpath(f'x_sda_subsampling_{subsampling_value}.png'))
+        draw(w.reshape(*shape), zoom=2).save(plot_folder.joinpath(f'x_sda_subsampling_{subsampling_value}_zoom2.png'))
 
         guided_score = DPS(VPSDE(score), likelihood, zeta=1.)
         sde = guided_score.get_sde(shape=x_star.shape).cuda()
@@ -311,8 +311,8 @@ def main(args):
         x = sde.sample(steps=256, corrections=1, tau=0.5).cpu()
         w = chain.vorticity(x)
 
-        draw(w.reshape(*shape)).save(f'plots/x_dps_subsampling_{subsampling_value}.png')
-        draw(w.reshape(*shape), zoom=2).save(f'plots/x_dps_subsampling_{subsampling_value}_zoom2.png')
+        draw(w.reshape(*shape)).save(plot_folder.joinpath(f'x_dps_subsampling_{subsampling_value}.png'))
+        draw(w.reshape(*shape), zoom=2).save(plot_folder.joinpath(f'x_dps_subsampling_{subsampling_value}_zoom2.png'))
 
     ######################################################
     ##################       Loop      ###################

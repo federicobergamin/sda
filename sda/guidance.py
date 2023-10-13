@@ -88,7 +88,7 @@ class DPS(GuidedScore):
             err = self.likelihood.err(x_).square().sum()
             return err, eps
 
-        guidance, err, eps = grad_and_value(log_prob, has_aux=True)(x)
+        guidance, (err, eps) = grad_and_value(log_prob, has_aux=True)(x)
         guidance = guidance * self.zeta / err.sqrt()
         return eps - sigma * guidance
 

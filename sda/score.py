@@ -10,6 +10,7 @@ from typing import *
 from zuko.utils import broadcast
 
 from .nn import *
+from sda.sde import VPSDE
 
 
 
@@ -160,121 +161,121 @@ class MCScoreNet(nn.Module):
 
 
 
-# class DPSGaussianScore(nn.Module):
-#     r"""Creates a score module for Gaussian inverse problems.
+class DPSGaussianScore(nn.Module):
+    r"""Creates a score module for Gaussian inverse problems.
 
-#     .. math:: p(y | x) = N(y | A(x), Σ)
+    .. math:: p(y | x) = N(y | A(x), Σ)
 
-#     References:
-#         | Diffusion Posterior Sampling for General Noisy Inverse Problems (Chung et al., 2022)
-#         | https://arxiv.org/abs/2209.14687
+    References:
+        | Diffusion Posterior Sampling for General Noisy Inverse Problems (Chung et al., 2022)
+        | https://arxiv.org/abs/2209.14687
 
-#     Note:
-#         This module returns :math:`-\sigma(t) s(x(t), t | y)`.
-#     """
+    Note:
+        This module returns :math:`-\sigma(t) s(x(t), t | y)`.
+    """
 
-#     def __init__(
-#         self,
-#         y: Tensor,
-#         A: Callable[[Tensor], Tensor],
-#         sde: VPSDE,
-#         zeta: float = 1.0,
-#     ):
-#         super().__init__()
+    def __init__(
+        self,
+        y: Tensor,
+        A: Callable[[Tensor], Tensor],
+        sde: VPSDE,
+        zeta: float = 1.0,
+    ):
+        super().__init__()
 
-#         self.register_buffer('y', y)
+        self.register_buffer('y', y)
 
-#         self.A = A
-#         self.sde = sde
-#         self.zeta = zeta
+        self.A = A
+        self.sde = sde
+        self.zeta = zeta
 
-#     def forward(self, x: Tensor, t: Tensor) -> Tensor:
-#         mu, sigma = self.sde.mu(t), self.sde.sigma(t)
+    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+        mu, sigma = self.sde.mu(t), self.sde.sigma(t)
 
-#         with torch.enable_grad():
-#             x = x.detach().requires_grad_(True)
+        with torch.enable_grad():
+            x = x.detach().requires_grad_(True)
 
-#             eps = self.sde.eps(x, t)
-#             x_ = (x - sigma * eps) / mu
-#             err = (self.y - self.A(x_)).square().sum()
+            eps = self.sde.eps(x, t)
+            x_ = (x - sigma * eps) / mu
+            err = (self.y - self.A(x_)).square().sum()
 
-#         s, = torch.autograd.grad(err, x)
-#         s = -s * self.zeta / err.sqrt()
+        s, = torch.autograd.grad(err, x)
+        s = -s * self.zeta / err.sqrt()
 
-#         return eps - sigma * s
+        return eps - sigma * s
 
 
-# class GaussianScore(nn.Module):
-#     r"""Creates a score module for Gaussian inverse problems.
+class GaussianScore(nn.Module):
+    r"""Creates a score module for Gaussian inverse problems.
 
-#     .. math:: p(y | x) = N(y | A(x), Σ)
+    .. math:: p(y | x) = N(y | A(x), Σ)
 
-#     Note:
-#         This module returns :math:`-\sigma(t) s(x(t), t | y)`.
+    Note:
+        This module returns :math:`-\sigma(t) s(x(t), t | y)`.
 
-#     Comments: this is the class implementing the likelihood score 
-#                 \nabla_{x(t)} log N (y | A(\hat{x}), \Sigma_{y} + (\sigma(t)^2 / mu(t)^2) \Gamma)
+    Comments: this is the class implementing the likelihood score 
+                \nabla_{x(t)} log N (y | A(\hat{x}), \Sigma_{y} + (\sigma(t)^2 / mu(t)^2) \Gamma)
             
-#             where \hat{x} is computed using Tweedie's Formula given by:
+            where \hat{x} is computed using Tweedie's Formula given by:
 
-#             \hat{x} = \frac{x(t) + \sigma(t)^2 s_x}{\mu(t)}
+            \hat{x} = \frac{x(t) + \sigma(t)^2 s_x}{\mu(t)}
 
-#             and s_x is the prior score given by the score newtork.
+            and s_x is the prior score given by the score newtork.
 
-#             Since we are using the following parametrization of the score
-#             function:
-#                     s_x = - \eps_x / \sigma(t)
+            Since we are using the following parametrization of the score
+            function:
+                    s_x = - \eps_x / \sigma(t)
 
-#             then Tweedie's formula becomes:
-#                  \hat{x} = \frac{x(t) - \sigma(t) \eps_x}{\mu(t)}
+            then Tweedie's formula becomes:
+                 \hat{x} = \frac{x(t) - \sigma(t) \eps_x}{\mu(t)}
 
-#             which is exactly shown on line 421.
-#     """
+            which is exactly shown on line 421.
+    """
 
-#     def __init__(
-#         self,
-#         y: Tensor,
-#         A: Callable[[Tensor], Tensor],
-#         std: Union[float, Tensor],
-#         sde: VPSDE,
-#         gamma: Union[float, Tensor] = 1e-2,
-#         detach: bool = False,
-#     ):
-#         super().__init__()
+    def __init__(
+        self,
+        y: Tensor,
+        A: Callable[[Tensor], Tensor],
+        std: Union[float, Tensor],
+        sde: VPSDE,
+        gamma: Union[float, Tensor] = 1e-2,
+        detach: bool = False,
+    ):
+        super().__init__()
 
-#         self.register_buffer('y', y)
-#         self.register_buffer('std', torch.as_tensor(std))
-#         self.register_buffer('gamma', torch.as_tensor(gamma))
+        self.register_buffer('y', y)
+        self.register_buffer('std', torch.as_tensor(std))
+        self.register_buffer('gamma', torch.as_tensor(gamma))
 
-#         # observation process A
-#         self.A = A
-#         # score netwerk
-#         self.sde = sde
-#         self.detach = detach
+        # observation process A
+        self.A = A
+        # score netwerk
+        self.sde = sde
+        self.detach = detach
 
-#     def forward(self, x: Tensor, t: Tensor) -> Tensor:
-#         mu, sigma = self.sde.mu(t), self.sde.sigma(t)
+    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+        mu, sigma = self.sde.mu(t), self.sde.sigma(t)
 
-#         if self.detach:
-#             eps = self.sde.eps(x, t)
+        if self.detach:
+            eps = self.sde.eps(x, t)
 
-#         with torch.enable_grad():
-#             x = x.detach().requires_grad_(True)
+        with torch.enable_grad():
+            x = x.detach().requires_grad_(True)
 
-#             if not self.detach:
-#                 eps = self.sde.eps(x, t)
+            if not self.detach:
+                eps = self.sde.eps(x, t)
             
-#             # this is Tweedie's formula under the chosen parametrization
-#             # of epsilon
-#             x_ = (x - sigma * eps) / mu
+            # this is Tweedie's formula under the chosen parametrization
+            # of epsilon
+            x_ = (x - sigma * eps) / mu
 
-#             # here we apply the observation process to x_ so we can compare with the 
-#             # observation y we are given
-#             err = self.y - self.A(x_)
-#             var = self.std ** 2 + self.gamma * (sigma / mu) ** 2
+            # here we apply the observation process to x_ so we can compare with the 
+            # observation y we are given
+            err = self.y - self.A(x_)
+            var = self.std ** 2 + self.gamma * (sigma / mu) ** 2
 
-#             log_p = -(err ** 2 / var).sum() / 2
+            log_p = -(err ** 2 / var).sum() / 2
 
-#         s, = torch.autograd.grad(log_p, x)
+        s, = torch.autograd.grad(log_p, x)
 
-#         return eps - sigma * s
+        return eps - sigma * s
